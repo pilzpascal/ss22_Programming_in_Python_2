@@ -5,14 +5,14 @@ Exercise 4
 """
 
 import numpy as np
+from math import ceil
 
 
 def ex4(image_array, offset, spacing):
     # Casting offset and spacing to int, if this fails we get a ValueError, which is what the assignments specifies
     offset = tuple(int(entry) for entry in offset)
     spacing = tuple(int(entry) for entry in spacing)
-    # Checking the other rules that the assignment specifies, the final one
-    # about the number of remaining pixels will be checked later
+    # Checking the other rules that the assignment specifies
     if not isinstance(image_array, np.ndarray):
         raise TypeError(f"image_array is of type {type(image_array)}, not np.ndarray.")
     if not (image_array.shape[2] == 3 or image_array.ndim == 3):
@@ -23,6 +23,13 @@ def ex4(image_array, offset, spacing):
     for i in spacing:
         if i < 2 or i > 8:
             raise ValueError("Spacing is not in [2,8].")
+    # We check if the number of remaining pixels is grater than 144
+    # The formula I use for this is
+    # ((length_of_rows - offset_rows) / spacing_rows) * ((length_of_cols - offset_cols) / spacing_cols)
+    if ceil((image_array.shape[1] - offset[0]) / spacing[0]) *\
+            ceil((image_array.shape[0] - offset[1]) / spacing[1]) < 144:
+        raise ValueError(f"The number of known pixels after removing must be at least 144 but is \
+{ceil((image_array.shape[1] - offset[0]) / spacing[0]) * ceil((image_array.shape[0] - offset[1]) / spacing[1])}")
 
     # Creating a working copy of the image, which also transposed immediately
     input_array = np.transpose(image_array, (2, 0, 1)).copy()
@@ -50,11 +57,7 @@ def ex4(image_array, offset, spacing):
     known_array = np.transpose(input_array, (1, 2, 0)).copy()
     known_array[known_array > 0] = 1
 
-    # We check if the number of remaining pixels is grater than 144
-    if np.sum(known_array) < 144:
-        raise ValueError("Number of remaining pixels is less than 144")
-
     # target_array is equal to the image array
-    target_array = image_array[not known_array].flatten()
+    target_array = image_array[known_array < 1].flatten().copy()
 
     return input_array, known_array, target_array
