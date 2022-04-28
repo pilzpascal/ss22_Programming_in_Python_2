@@ -58,9 +58,19 @@ def ex4(image_array, offset, spacing):
 
     # We get the array of known pixels, represented by 0 if unknown, 1 if known.
     # This should be of same shape as image_array, therefore we transpose again.
-    # known_array = np.transpose(input_array, (1, 2, 0)).copy()
     known_array = input_array.copy()
-    known_array[known_array > 0] = 1
+
+    # This was my previous attempt, but we are missing something: if we have a pixel like [0, 121, 54] then the pixel
+    # would become [0, 1, 1] but it should be [1, 1, 1].
+    # known_array[known_array > 0] = 1
+
+    # This is the new version, it works but it is not very elegant.
+    # Basically we iterate of the pixel, considering the RGB values for each and if one of the RGB is greater than 0
+    # we set the entire pixel to 1
+    for i in range(known_array.shape[1]):
+        for j in range(known_array.shape[2]):
+            if np.any(known_array[:, i, j]):
+                known_array[:, i, j] = 1
 
     # target_array is equal to the image array
     target_array = np.transpose(image_array, (2, 0, 1))[known_array < 1].copy()
