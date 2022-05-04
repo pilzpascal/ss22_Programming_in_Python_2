@@ -22,20 +22,20 @@ class ImageStandardizer:
         self.std = None
 
     def analyze_images(self):
-        # Initializing two array with a length corresponding to the number of files; and a width of 3, corresponding
-        # to the three color channels
-        means = np.zeros(shape=(len(self.files), 3), dtype=np.float64)
-        stds = np.zeros(shape=(len(self.files), 3), dtype=np.float64)
-        for index, file in enumerate(self.files):
+        total_means = np.array([0.0, 0.0, 0.0])
+        total_stds = np.array([0.0, 0.0, 0.0])
+        for file in self.files:
             with Image.open(file, "r") as image:
                 im = np.asarray(image)
-            # Using numpy's built in methods for mean and standard deviation, along axis (0, 1), as to preserve
-            # the individual RGB entries
-            means[index] = im.mean(axis=(0, 1))
-            stds[index] = im.std(axis=(0, 1))
-        # Averaging over the means and the standard deviations
-        self.mean = means.mean(axis=0)
-        self.std = stds.mean(axis=0)
+            # We are saving the mean so that we can use it to calculate the variance
+            im_mean = im.sum(axis=(0, 1)) / (im.shape[0] * im.shape[1])
+            total_means += im_mean
+            # We use this formula for the variance instead of the simplified one because it seems like with the
+            # simplified one the because otherwise the numbers get too large with the squared sum and we experience
+            # integer overflow. Apparently this would not happen in pure python, but it does happen in numpy
+            total_stds += np.sqrt(np.square(im - im_mean).sum(axis=(0, 1)) / (im.shape[0] * im.shape[1]))
+        self.mean = total_means / len(self.files)
+        self.std = total_stds / len(self.files)
         return self.mean, self.std
 
     def get_standardized_images(self):
