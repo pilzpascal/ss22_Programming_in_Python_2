@@ -1,0 +1,2 @@
+(1) What (loss) function will be used to evaluate the results? MSE or perceptual or other?
+(2) How are the original images downsized to the size we got (usually to Nx128)?
