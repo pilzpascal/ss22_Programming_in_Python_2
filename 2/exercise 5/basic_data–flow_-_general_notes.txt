@@ -1,5 +1,0 @@
-data location => data set
-data set, batch size, custom collate function => data loader
-data loader => network => outputs
-outputs => loss
-loss => repeat from line 3 until satisfied

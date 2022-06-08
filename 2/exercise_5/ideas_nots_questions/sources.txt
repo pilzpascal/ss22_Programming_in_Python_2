@@ -1,0 +1,7 @@
+Sources:
+2022 — A Review of Deep Learning Based Image Super-resolution Techniques — Fangyuan Zhu.pdf
+2019 — Deep Learning for Single Image Super-Resolution — A Brief Review — Wenming Yang, Xuechen Zhang, Yapeng Tian, Wei Wang, Jing-Hao Xue, Quingmin Liao.pdf
+2016 — Photo-Realistic Single Image Super-Resolution Using a Generative Adversarial Network — christian Ledig, Lucas Theis, Ferenc Huszár, Jose Caballero, et al.pdf
+https://xinyangdut.github.io/SR/index.html
+https://towardsdatascience.com/an-evolution-in-single-image-super-resolution-using-deep-learning-66f0adfb2d6b
+https://blog.paperspace.com/image-super-resolution/

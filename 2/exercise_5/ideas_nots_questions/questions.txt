@@ -1,0 +1,2 @@
+(1) Q: What (loss) function will be used to evaluate the results? MSE or perceptual or other? A: RMSE
+(2) Q: How are the original images downsized to the size we got (usually to Nx128)? A: transforms.Resize(size=im_shape) with BILINEAR interpolation, https://pytorch.org/vision/stable/generated/torchvision.transforms.Resize.html
