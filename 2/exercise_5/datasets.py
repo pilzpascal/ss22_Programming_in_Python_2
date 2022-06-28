@@ -14,12 +14,17 @@ provided to us, the original authors are Michael Widrich and Andreas Schörgenhu
 
 Datasets file of project.
 """
+import os
 
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 import torchvision
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
+import PIL
+from PIL import Image
+from utils import ImageStandardizer
 
 
 def rgb2gray(rgb_array: np.ndarray, r: float = 0.2989, g: float = 0.5870, b: float = 0.1140):
@@ -96,4 +101,29 @@ class RotatedImages(Dataset):
 
         return full_inputs, rotated_image_data, idx
 
+
 # TODO: create data_set classes
+class Caltech256Images(Dataset):
+    def __init__(self, transform_chain=None, random_seed=42):
+        torch.manual_seed(random_seed)
+        self.dataset_path = "/Users/pascal/Documents/Programming in Python 2/256_ObjectCategories/data"
+        self.all_file_names = os.listdir(self.dataset_path)
+        if transform_chain is None:
+            self.transform_chain = transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.RandomResizedCrop(100),
+                 transforms.RandomVerticalFlip(),
+                 transforms.RandomHorizontalFlip()])
+        else:
+            self.transform_chain = transform_chain
+
+    def __len__(self):
+        return len(self.all_file_names)
+
+    def __getitem__(self, idx):
+        with Image.open(os.path.join(self.dataset_path, self.all_file_names[idx]), "r") as image:
+            image = self.transform_chain(image)
+            # trans = transforms.ToPILImage()
+            # trans(image).show()
+        return image, self.all_file_names[idx], idx
+

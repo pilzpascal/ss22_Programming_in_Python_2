@@ -54,7 +54,7 @@ def main(results_path, network_config: dict, lr: int = 1e-3, weight_decay: float
     val_loader = torch.utils.data.DataLoader(validation_set, batch_size=1, shuffle=False, num_workers=0)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False, num_workers=0)
 
-    # # TODO: use random rotation and further data augmentation
+    # # TODO: use random rotation and further data augmentation create a better data augmentation chain
     # Create datasets and data_loaders with rotated targets with augmentation (for training)
     training_set_augmented = RotatedImages(dataset=training_set, rotation_angle=45,
                                            transform_chain=transforms.Compose([transforms.RandomHorizontalFlip(),
@@ -65,7 +65,29 @@ def main(results_path, network_config: dict, lr: int = 1e-3, weight_decay: float
     # Define a tensorboard summary writer that writes to directory "results_path/tensorboard"
     writer = SummaryWriter(log_dir=os.path.join(results_path, "tensorboard"))
 
-    # TODO: do the thing
+    # Create Network
+    net = Net1(**network_config)
+    net.to(device)
+
+    # Get MSE loss function
+    mse = torch.nn.MSELoss()
+
+    # Get adam optimizer
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+
+    # parameters for training
+    print_stats_at = 100  # print status to tensorboard every x updates
+    plot_at = 10_000  # plot every x updates
+    validate_at = 5_000  # evaluate model on validation set and check for new best model every x updates
+    update = 0  # current update counter
+    best_validation_loss = np.inf  # best validation loss so far
+    update_progress_bar = tqdm(total=n_updates, desc=f"loss: {np.nan:7.5f}", position=0)
+
+    # Save initial model as "best" model (will be overwritten later)
+    saved_model_file = os.path.join(results_path, "best_model.pt")
+    torch.save(net, saved_model_file)
+
+    # TODO: training
 
 
 if __name__ == "__main__":
