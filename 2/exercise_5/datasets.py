@@ -24,7 +24,7 @@ import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
 import PIL
 from PIL import Image
-from utils import ImageStandardizer
+import utils
 
 
 def rgb2gray(rgb_array: np.ndarray, r: float = 0.2989, g: float = 0.5870, b: float = 0.1140):
@@ -127,3 +127,55 @@ class Caltech256Images(Dataset):
             # trans(image).show()
         return image, self.all_file_names[idx], idx
 
+
+class ImageData(Dataset):
+    def __init__(self, file_names: list, transform_chain=None, seed: int = 42):
+        torch.manual_seed(seed)
+        self.file_names = file_names
+        self.transform_chain = transform_chain
+
+    def __len__(self):
+        return len(self.file_names)
+
+    def __getitem__(self, index):
+        with Image.open(self.file_names[index], "r") as image:
+            if self.transform_chain is not None:
+                image = self.transform_chain(image)
+            image_as_array = np.asarray(image)
+        return image_as_array, index
+
+
+class TransformedImages(Dataset):
+    def __init__(self, data_set, transform_chain=None, mean: int = None, std: int = None, seed: int = 42):
+        torch.manual_seed(seed)
+        self.data_set = data_set
+        self.transform_chain = transform_chain
+        self.mean = mean
+        self.std = std
+
+    def __len__(self):
+        return len(self.data_set)
+
+    def __getitem__(self, item):
+        elem, index = self.data_set[item]
+        image_data = TF.to_pil_image(elem)
+        if self.transform_chain is not None:
+            image_data = self.transform_chain(image_data)
+        # we always bring the image to a size of (100,100), as this is the size of the test images
+        image_data = TF.resize(img=image_data, size=[100, 100])
+
+        # transform to numpy array and normalise according to training data mean and standard deviation
+        image_data = np.asarray(image_data, dtype=np.float32)
+        image_data[:] -= self.mean
+        image_data[:] /= self.std
+
+        # get random offset and spacing, apply to image using the function from ex4 to get the training data
+        offset = (np.random.randint(9), np.random.randint(9))
+        spacing = (np.random.randint(2, 7), np.random.randint(2, 7))
+        input_array, known_array, target_array = utils.ex4(image_data, offset, spacing)
+
+        # image_data is the cropped (and possibly augmented) original image
+        # input_array is the image with lines blacked out corresponding to offset and spacing, see ex4 for more info
+        # know_array is a list of the pixels that are not blacked out
+        # target_array is a list of the pixels that are blacked out
+        return image_data, input_array, known_array, target_array
