@@ -1,0 +1,16 @@
+{
+  "results_path": "results",
+  "learning_rate": 1e-3,
+  "weight_decay": 1e-5,
+  "batch_size": 32,
+  "n_updates": 50000,
+  "mean_and_std_file_path": "mean_and_std.csv",
+  "indices_file_path": "data_indices.csv",
+  "randomness": false,
+  "network_config": {
+    "n_hidden_layers": 5,
+    "n_in_channels": 4,
+    "n_kernels": 32,
+    "kernel_size": 7
+  }
+}

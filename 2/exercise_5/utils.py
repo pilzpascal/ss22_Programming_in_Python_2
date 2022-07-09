@@ -25,10 +25,11 @@ from matplotlib import pyplot as plt
 
 from math import ceil
 from PIL import Image
+from typing import Union
 import shutil
 
 
-def evaluate_model(model: torch.nn.Module, data_loader: torch.utils.data.dataloader, loss_fn, device: torch.device):
+def evaluate_model(model: torch.nn.Module, data_loader: torch.utils.data.dataloader, loss_fn, device: torch.device,):
     """Function for evaluation of a model `model` on the data in `data_loader` on device `device`,
     using the specified `loss_fn` loss function"""
     model.eval()
@@ -39,13 +40,11 @@ def evaluate_model(model: torch.nn.Module, data_loader: torch.utils.data.dataloa
         for data in tqdm(data_loader, desc="scoring", position=0):
             # Get a sample and move inputs and targets to device
             inputs, targets, file_names = data
+            inputs = torch.stack([torch.tensor(elem) if not torch.is_tensor(elem) else elem for elem in inputs])
             inputs = inputs.to(device)
-            targets = targets.to(device)
 
             # Get outputs of the specified model
             outputs = model(inputs)
-
-            # Here we could clamp the outputs to the minimum and maximum values of inputs for better performance
 
             # Add the current loss, which is the mean loss over all minibatch samples
             # (unless explicitly otherwise specified when creating the loss function!)
@@ -167,13 +166,9 @@ def validate_images(input_dir: str, output_dir: str, log_file: str, formatter: s
 
 
 class ImageStandardizer:
-    def __init__(self, files):
+    def __init__(self, files: list):
         # as input we get a list of file names
         self.files = files
-        # If we didn't find anything we raise a ValueError
-        if not self.files:
-            raise ValueError(f"No .jpg files found in {os.path.relpath(files[0])}")
-        self.files.sort()
         self.mean = None
         self.std = None
 
@@ -204,17 +199,20 @@ class ImageStandardizer:
             yield im.astype("float32")
 
 
-def ex4(image_array, offset, spacing):
+def get_obscured_image(image_array: np.ndarray, offset: (int, int), spacing: (int, int),
+                       mean: Union[list, torch.Tensor], std: Union[list, torch.Tensor]):
     """
-        Modifies an input image, using the given offset and spacing, in order to create training data for our
-        image-upscaling project. For more detail, see as2.pdf
+        A modified version of the function ex4 we wrote for exercise 4 of assignment 2.
+        This function returns the original image and the obscured image.
 
                 Parameters:
                         image_array (ndarray): A three dimensional numpy array of shape (M, N, 3)
                         offset (2-tuple of int): The values by which to offset the grid
                         spacing (2-tuple of int): The spacing of the grid
+                        mean (float): the arithmetic mean over the training set, used to normalise the images
+                        std (float): the standard deviation over the training set, used to normalise the images
                 Returns:
-                        3-tuple of ndarray
+                        2-tuple of ndarray
 
                         input_array (ndarray): A numpy array of shape (3, M, N) where all pixels outside the grid are
                         set to 0
@@ -222,18 +220,11 @@ def ex4(image_array, offset, spacing):
                         known_array (ndarray): A numpy array of shape (3, M, N) where all pixels which are not 0 in
                         the known_array are equal to the corresponding pixels of the image_array, i.e., an inverted
                         boolean mask of the inverted known_array applied to image_array
-
-                        target_array (ndarray): A numpy array of shape (remaining_pixels * 3,), where remaining_pixels
-                        are the non 0 pixels in input_array. target_array has the pixel values of image_array
-                        (the original image) everywhere the image_array got overwritten with 0, it is flattened out,
-                        i.e., one dimensional and of length (remaining_pixels * 3). First a sequence of all R values,
-                        then all G values, then all B values.
     """
 
-    # Casting offset and spacing to int, if this fails we get a ValueError, which is what the assignments specifies
     offset = tuple(int(entry) for entry in offset)
     spacing = tuple(int(entry) for entry in spacing)
-    # Checking the other rules that the assignment specifies
+
     if not isinstance(image_array, np.ndarray):
         raise TypeError(f"image_array is of type {type(image_array)}, not np.ndarray.")
     if not (image_array.ndim == 3 and image_array.shape[2] == 3):
@@ -244,8 +235,10 @@ def ex4(image_array, offset, spacing):
     for i in spacing:
         if not 2 <= i <= 8:
             raise ValueError("Spacing is not in [2,8].")
+
     # We check if the number of remaining pixels is grater than 144. The formula I use for this is:
-    # remaining_pixels = ceil((length_rows - offset_rows) / spacing_rows) * ceil((length_cols - offset_cols) / spacing_cols)
+    # remaining_pixels =
+    # ceil((length_rows - offset_rows) / spacing_rows) * ceil((length_cols - offset_cols) / spacing_cols)
     if not ceil((image_array.shape[1] - offset[0]) / spacing[0]) *\
             ceil((image_array.shape[0] - offset[1]) / spacing[1]) >= 144:
         raise ValueError(f"The number of known pixels after removing must be at least 144 but is \
@@ -255,6 +248,9 @@ def ex4(image_array, offset, spacing):
     # Creating a working copy of the image, which is also transposed immediately
     input_array = np.transpose(image_array, (2, 0, 1)).copy()
     # After the transpose we have input_array.shape = (3, M, N)
+
+    # normalizing the input array separately
+    input_array = np.array([(elem - mean[i]) / std[i] for i, elem in enumerate(input_array)])
 
     # Setting the offset rows and cols to 0
     # N
@@ -278,11 +274,6 @@ def ex4(image_array, offset, spacing):
     # This should be of same shape as image_array, therefore we transpose again.
     known_array = input_array.copy()
 
-    # This was my previous attempt, but we are missing something: if we have a pixel like [0, 121, 54] then the pixel
-    # would become [0, 1, 1] but it should be [1, 1, 1].
-    # known_array[known_array > 0] = 1
-
-    # This is the new version; it works, but it is not very elegant.
     # Basically we iterate over the pixels, considering the RGB values for each and if one of the RGB is greater than 0
     # we set the entire pixel to 1, so [0, 121, 54] would now become [1, 1, 1]
     # known_array.shape = (3, M, N)
@@ -291,18 +282,35 @@ def ex4(image_array, offset, spacing):
             if np.any(known_array[:, i, j]):
                 known_array[:, i, j] = 1
 
+    # input_array.shape = (3, M, N), known_array.shape = (3, M, N)
+    # where M, N are from  image_array (original image) with image_array.shape = (M, N, 3)
+    return input_array, known_array
+
+
+def get_target_array(image_array: Union[np.ndarray, torch.Tensor], known_array: Union[np.ndarray, torch.Tensor]):
+    """
+        A modified version of the function ex4 we wrote for exercise 4 of assignment 2.
+        This function returns the target array.
+
+                Parameters:
+                        image_array (ndarray): A three dimensional numpy array of shape (M, N, 3)
+                        known_array (ndarray): A numpy array of shape (3, M, N) where all pixels which are not 0 in
+                        the known_array are equal to the corresponding pixels of the image_array, i.e., an inverted
+                        boolean mask of the inverted known_array applied to image_array
+                Returns:
+                        target_array (ndarray): A numpy array of shape (remaining_pixels * 3,), where remaining_pixels
+                        are the non 0 pixels in input_array. target_array has the pixel values of image_array
+                        (the original image) everywhere the image_array got overwritten with 0, it is flattened out,
+                        i.e., one dimensional and of length (remaining_pixels * 3). First a sequence of all R values,
+                        then all G values, then all B values.
+    """
     # target_array has the pixel values of image_array (the original image) everywhere the image_array got
     # overwritten with 0, it is flattened out, i.e., one dimensional and of length (remaining_pixels * 3). First a
     # sequence of all R values, then all G values, then all B values.
     target_array = np.transpose(image_array, (2, 0, 1))[known_array < 1].copy()
-
-    # input_array.shape = (3, M, N), known_array.shape = (3, M, N), target_array.shape = (remaining_pixels * 3,)
-    # where M, N are from  image_array (original image) with image_array.shape = (M, N, 3)
-    return input_array, known_array, target_array
+    return target_array
 
 
-# TODO: make collate function for NxMx3 sized data
-# I am no longer sure if we actually need this, since the data is always of shape 100x100
-def custom_collate(data, ):
-    sequences = [sample[0] for sample in data]
-    max_len = np.max([seq.shape[0] for seq in data])
+def set_seed(seed: Union[float, int] = 0):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
