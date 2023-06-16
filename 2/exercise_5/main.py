@@ -26,18 +26,20 @@ import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from tqdm import tqdm
+from typing import Union
 
 import architectures
 import datasets
 import utils
 
 
-def main(results_path, network_config: dict, mean_and_std_file_path, indices_file_path,
+def main(network_config: dict, data_path: str, results_path: str = "results",
+         train_size: int = 27_430, val_size: int = 1_792, test_size: int = 188,
+         mean_and_std_file_path: str = "mean_and_std.csv", indices_file_path: str = "data_indices.csv",
          learning_rate: int = 1e-3, weight_decay: float = 1e-5, batch_size: int = 32, n_updates: int = 50_000,
-         randomness: bool = False):
+         randomness: bool = False, random_seed: Union[int, float] = 0):
     """Main function that takes hyperparameters and performs training and evaluation of model"""
     # Set a known random seed for reproducibility
-    random_seed = 0
     if not randomness:
         utils.set_seed(random_seed)
 
@@ -48,22 +50,14 @@ def main(results_path, network_config: dict, mean_and_std_file_path, indices_fil
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
 
-    data_path = "/Users/pascal/Library/Mobile Documents/com~apple~CloudDocs/Linz/JKU/AI Bachelor/2. Semester/" \
-                "Programming in Python 2/Programming_in_Python_2_Exercise_Assignments/2/data"
     file_names = glob.glob(os.path.join(data_path, "**", "*.jpg"), recursive=True)
     file_names.sort()
     if not os.path.exists(indices_file_path):
-        # the hard-coded numbers are bc i want to have val and test sets separated by students
-        # and i am too lazy to code a nice solution. This roughly splits it into 2:1
-        train_size = 27_430
-        test_size = 1_792
-        val_size = 188
-
         # saving which indices correspond to which images
         header = ["index", "set", "folder", "file_name"]
         csv_data = []
         for index, entry in enumerate(file_names):
-            mode = "train" if index < train_size else ("test" if index < train_size + test_size else "val")
+            mode = "train" if index < train_size else ("val" if index < train_size + val_size else "test")
             csv_data.append([index, mode, os.path.split(os.path.dirname(entry))[1], os.path.split(entry)[1]])
         with open(indices_file_path, "w") as csv_file:
             writer = csv.writer(csv_file)
@@ -73,33 +67,29 @@ def main(results_path, network_config: dict, mean_and_std_file_path, indices_fil
         with open(indices_file_path, "r") as csv_file:
             train_size, test_size, val_size = 0, 0, 0
             reader = csv.reader(csv_file)
-            header = next(reader)
+            next(reader)
             for row in reader:
                 if row[1] == "train":
                     train_size += 1
-                elif row[1] == "test":
-                    test_size += 1
                 elif row[1] == "val":
                     val_size += 1
+                elif row[1] == "test":
+                    test_size += 1
                 else:
                     raise ValueError(f"Encountered unexpected while reading csv file containing the saved indices.\n"
-                                     f"Should be in ['train', 'test', 'val'] but is {row[1]}")
-
-    train_size = 1
-    test_size = 1
-    val_size = 1
+                                     f"Should be in ['train', 'val', 'test'] but is {row[1]}")
 
     data_set = datasets.ImageData(file_names=file_names)
 
     train_set = torch.utils.data.Subset(data_set, indices=range(0, train_size))
-    test_set = torch.utils.data.Subset(data_set, indices=range(train_size, train_size + test_size))
+    test_set = torch.utils.data.Subset(data_set, indices=range(train_size, train_size + val_size))
     val_set = torch.utils.data.Subset(data_set,
-                                      indices=range(train_size + test_size, train_size + test_size + val_size))
+                                      indices=range(train_size + val_size, train_size + val_size + test_size))
 
     print("=" * 80)
     print(f"Data was split into training data, test data, "
-          f"and validation data with a size\nof {len(train_set)} : {len(test_set)} : {len(val_set)}, "
-          f"i.e., a ratio of {(len(train_set) / len(test_set)):.4f} : 1 : {(len(val_set) / len(test_set)):.4f}. "
+          f"and validation data with a size\nof {len(train_set)} : {len(val_set)} : {len(test_set)}, "
+          f"i.e., a ratio of {(len(train_set) / len(val_set)):.4f} : 1 : {(len(test_set) / len(val_set)):.4f}. "
           f"We have {len(data_set)}\nimages in total.")
     print("=" * 80 + "\n")
 
@@ -129,17 +119,17 @@ def main(results_path, network_config: dict, mean_and_std_file_path, indices_fil
 
     # create datasets and data_loaders for cropped images without any further augmentation
     train_set_eval = datasets.TransformedImages(train_set, mean=mean, std=std)
-    test_set_transformed = datasets.TransformedImages(test_set, mean=mean, std=std)
     val_set_transformed = datasets.TransformedImages(val_set, mean=mean, std=std)
+    test_set_transformed = datasets.TransformedImages(test_set, mean=mean, std=std)
 
     train_loader = torch.utils.data.DataLoader(
         train_set_eval,
         batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
-    test_loader = torch.utils.data.DataLoader(
-        test_set_transformed,
-        batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(
         val_set_transformed,
+        batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(
+        test_set_transformed,
         batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
     # create dataset and data_loader for training images with cropping and augmentation
@@ -173,10 +163,9 @@ def main(results_path, network_config: dict, mean_and_std_file_path, indices_fil
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     print_stats_at = 100  # print status to tensorboard every x updates
-    plot_at = 1000
-    validate_at = 300  # evaluate model on validation set and check for new best model every x updates
+    plot_at = 10_000  # plot every x updates
+    validate_at = 5000  # evaluate model on validation set and check for new best model every x updates
     update = 0  # current update counter
-    not_saved = 0  # used for early stopping, how often we did not see an improvement
     best_validation_loss = np.inf  # best validation loss so far
 
     update_progress_bar = tqdm(total=train_size // batch_size, desc=f"loss: {np.nan:7.5f}", position=0)
@@ -218,8 +207,7 @@ def main(results_path, network_config: dict, mean_and_std_file_path, indices_fil
 
             # Evaluate model on validation set
             if (update + 1) % validate_at == 0:
-                val_loss = utils.evaluate_model(model=net, data_loader=val_loader, loss_fn=loss_fn, device=device,
-                                                mean=mean, std=std)
+                val_loss = utils.evaluate_model(model=net, data_loader=val_loader, loss_fn=loss_fn, device=device)
                 writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
                 # Add weights and gradients as arrays to tensorboard
                 for i, (name, param) in enumerate(net.named_parameters()):
@@ -244,9 +232,9 @@ def main(results_path, network_config: dict, mean_and_std_file_path, indices_fil
     # Load best model and compute score on test set
     print(f"Computing scores for best model")
     net = torch.load(saved_model_file)
-    train_loss = utils.evaluate_model(net, data_loader=train_loader, loss_fn=loss_fn, device=device, mean=mean, std=std)
-    val_loss = utils.evaluate_model(net, data_loader=val_loader, loss_fn=loss_fn, device=device, mean=mean, std=std)
-    test_loss = utils.evaluate_model(net, data_loader=test_loader, loss_fn=loss_fn, device=device, mean=mean, std=std)
+    train_loss = utils.evaluate_model(net, data_loader=train_loader, loss_fn=loss_fn, device=device)
+    val_loss = utils.evaluate_model(net, data_loader=val_loader, loss_fn=loss_fn, device=device)
+    test_loss = utils.evaluate_model(net, data_loader=test_loader, loss_fn=loss_fn, device=device)
 
     print(f"Scores:")
     print(f"  training loss: {train_loss}")

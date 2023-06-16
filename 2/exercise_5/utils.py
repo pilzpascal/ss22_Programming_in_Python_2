@@ -293,7 +293,7 @@ def get_target_array(image_array: Union[np.ndarray, torch.Tensor], known_array: 
         This function returns the target array.
 
                 Parameters:
-                        image_array (ndarray): A three dimensional numpy array of shape (M, N, 3)
+                        image_array (ndarray): A three dimensional numpy array of shape (3, M, N)
                         known_array (ndarray): A numpy array of shape (3, M, N) where all pixels which are not 0 in
                         the known_array are equal to the corresponding pixels of the image_array, i.e., an inverted
                         boolean mask of the inverted known_array applied to image_array
@@ -307,10 +307,12 @@ def get_target_array(image_array: Union[np.ndarray, torch.Tensor], known_array: 
     # target_array has the pixel values of image_array (the original image) everywhere the image_array got
     # overwritten with 0, it is flattened out, i.e., one dimensional and of length (remaining_pixels * 3). First a
     # sequence of all R values, then all G values, then all B values.
-    target_array = np.transpose(image_array, (2, 0, 1))[known_array < 1].copy()
-    return target_array
+    return image_array[known_array < 1].copy()
 
 
 def set_seed(seed: Union[float, int] = 0):
+    torch.use_deterministic_algorithms(True)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
